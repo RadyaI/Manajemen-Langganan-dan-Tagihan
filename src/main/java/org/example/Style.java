@@ -25,22 +25,52 @@ public class Style {
     // --- 3. CUSTOM COMPONENTS (Rounded Styles) ---
 
     // A. Input Text Biasa (Rounded)
+    // A. Input Text Biasa (Rounded + Placeholder Support)
     public static class RoundedTextField extends JTextField {
+        private String placeholder = "";
+
         public RoundedTextField(int columns) {
             super(columns);
             setOpaque(false);
             setFont(FONT_INPUT);
             setBorder(new EmptyBorder(10, 15, 10, 15));
         }
+
+        // Method buat set text placeholder
+        public void setPlaceholder(String placeholder) {
+            this.placeholder = placeholder;
+            repaint();
+        }
+
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // 1. Gambar Background Putih
             g2.setColor(COLOR_WHITE);
             g2.fillRoundRect(0, 0, getWidth()-1, getHeight()-1, 20, 20);
+
+            // 2. Gambar Border Hijau
             g2.setColor(COLOR_ACCENT);
             g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 20, 20);
+
+            // 3. Gambar Text Asli (Inputan User)
             super.paintComponent(g);
+
+            // 4. Gambar Placeholder (Kalau teks kosong & tidak lagi diketik)
+            if (getText().isEmpty() && !placeholder.isEmpty()) {
+                // Set warna placeholder (abu-abu transparan biar mirip browser)
+                g2.setColor(new Color(150, 150, 150));
+                g2.setFont(getFont().deriveFont(Font.ITALIC)); // Opsional: bikin miring dikit
+
+                // Hitung posisi biar pas di tengah vertikal
+                FontMetrics fm = g2.getFontMetrics();
+                int y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+
+                // Gambar teks (padding kiri 17 biar gak nempel border)
+                g2.drawString(placeholder, 17, y);
+            }
         }
     }
 
@@ -176,5 +206,42 @@ public class Style {
         }
     }
 
+    public static class RoundedButtonOutline extends JButton {
+        private boolean isHovered = false;
+
+        public RoundedButtonOutline(String text) {
+            super(text);
+            setContentAreaFilled(false);
+            setFocusPainted(false);
+            setBorderPainted(false);
+            setFont(FONT_BUTTON);
+            setForeground(COLOR_PRIMARY); // Teks Hijau
+            setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) { isHovered = true; repaint(); }
+                @Override
+                public void mouseExited(MouseEvent e) { isHovered = false; repaint(); }
+            });
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // Background
+            g2.setColor(isHovered ? new Color(240, 240, 240) : COLOR_WHITE);
+            g2.fillRoundRect(0, 0, getWidth()-1, getHeight()-1, 30, 30);
+
+            // Border/Garis Pinggir
+            g2.setColor(COLOR_PRIMARY);
+            g2.setStroke(new BasicStroke(2)); // Ketebalan garis 2px
+            g2.drawRoundRect(1, 1, getWidth()-3, getHeight()-3, 30, 30);
+
+            super.paintComponent(g);
+        }
+    }
 
 }
