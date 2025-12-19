@@ -67,7 +67,7 @@ public class Main extends JFrame {
 
             if (checkLogin(username, password)) {
                 JOptionPane.showMessageDialog(this, "Login Berhasil! Welcome " + username);
-                openDashboard();
+                openDashboard(username);
             } else {
                 JOptionPane.showMessageDialog(this, "Username / Password Salah!", "Error", JOptionPane.ERROR_MESSAGE);
             }
@@ -120,10 +120,9 @@ public class Main extends JFrame {
         return false;
     }
 
-    private void openDashboard() {
+    private void openDashboard(String username) {
         this.dispose();
-        // new Dashboard().setVisible(true); // Nanti di uncomment pas dashboard jadi
-        System.out.println("Masuk Dashboard...");
+        new Dashboard(username).setVisible(true);
     }
 
     public static void main(String[] args) {
