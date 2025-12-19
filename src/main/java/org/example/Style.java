@@ -6,6 +6,7 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
+
 public class Style {
 
     // --- 1. DEFINISI WARNA (PALETTE) ---
@@ -118,5 +119,62 @@ public class Style {
             super.paintComponent(g);
         }
     }
+
+    // --- 4. TAMBAHAN FONT (untuk Dashboard) ---
+    public static final Font FONT_SUBTITLE = new Font("SansSerif", Font.BOLD, 18);
+    public static final Font FONT_SMALL = new Font("SansSerif", Font.PLAIN, 12);
+
+    // Tombol kecil (Rounded, cocok untuk "History", "Bayar", "Hapus")
+    public static class RoundedButtonSmall extends JButton {
+        private boolean isHovered = false;
+
+        public RoundedButtonSmall(String text) {
+            super(text);
+            setContentAreaFilled(false);
+            setFocusPainted(false);
+            setBorderPainted(false);
+            setFont(FONT_LABEL);
+            setForeground(COLOR_WHITE);
+            setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) { isHovered = true; repaint(); }
+                @Override
+                public void mouseExited(MouseEvent e) { isHovered = false; repaint(); }
+            });
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(isHovered ? COLOR_TEXT : COLOR_PRIMARY);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 22, 22);
+            super.paintComponent(g);
+        }
+    }
+
+    // Panel rounded dengan border tipis (buat container tabel biar modern)
+    public static class RoundedPanelWithBorder extends JPanel {
+        public RoundedPanelWithBorder() {
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            g2.setColor(COLOR_WHITE);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 30, 30);
+
+            g2.setColor(COLOR_ACCENT);
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 30, 30);
+
+            super.paintComponent(g);
+        }
+    }
+
 
 }
