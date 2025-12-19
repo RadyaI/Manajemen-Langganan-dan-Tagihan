@@ -13,12 +13,14 @@ import java.io.*;
 import java.net.URL;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.List;
 
 public class Dashboard extends JFrame {
 
     private static final String DATA_CSV = "subscriptions.csv";
+    private static final String HISTORY_CSV = "history.csv";
 
     private final String username;
 
@@ -279,7 +281,7 @@ public class Dashboard extends JFrame {
 
     private void openHistory() {
         dispose();
-        new History().setVisible(true);
+        new History(this.username).setVisible(true);
     }
 
     // ===================== ICON UTILS =====================
@@ -406,19 +408,68 @@ public class Dashboard extends JFrame {
 
             if (res == JOptionPane.OK_OPTION) {
                 try {
+                    // 1) Update tenggat
                     LocalDate d = LocalDate.parse(r.tenggat, ID_DATE);
                     int bulan = (Integer) combo.getSelectedItem();
-                    r.tenggat = d.plusMonths(bulan).format(ID_DATE);
+                    String tenggatBaru = d.plusMonths(bulan).format(ID_DATE);
+                    r.tenggat = tenggatBaru;
 
+                    // 2) Hitung total bayar (harga * bulan)
+                    // Bersihin "Rp" dan titik, ambil digit saja
+                    String hargaRaw = (r.harga == null) ? "" : r.harga.trim();
+                    String angkaOnly = hargaRaw
+                            .replace("Rp", "")
+                            .replace("rp", "")
+                            .replace(".", "")
+                            .replace(" ", "")
+                            .replaceAll("[^0-9]", "");
+
+                    long hargaPerBulan = angkaOnly.isEmpty() ? 0L : Long.parseLong(angkaOnly);
+                    long total = hargaPerBulan * bulan;
+
+                    // Format balik Rupiah: Rp50.000
+                    java.text.NumberFormat nf = java.text.NumberFormat.getInstance(new Locale("id", "ID"));
+                    String totalRupiah = "Rp" + nf.format(total);
+
+                    // 3) Tanggal & waktu bayar sekarang
+                    String tanggalBayar = LocalDate.now().format(ID_DATE);
+                    String waktuBayar = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+
+                    // 4) Save subscriptions.csv
                     saveToCsv();
                     applyFilter(searchField.getText());
 
+                    // 5) Append ke history.csv
+                    // Format: Nama Layanan, Tenggat Baru, Durasi (Bulan), Total Bayar, Tanggal Bayar, Waktu Bayar
+                    try (PrintWriter pw = new PrintWriter(new FileWriter("history.csv", true))) {
+                        pw.println(
+                                r.nama + "," +
+                                        tenggatBaru + "," +
+                                        bulan + "," +
+                                        totalRupiah + "," +
+                                        tanggalBayar + "," +
+                                        waktuBayar
+                        );
+                    } catch (IOException io) {
+                        io.printStackTrace();
+                        JOptionPane.showMessageDialog(
+                                Dashboard.this,
+                                "Tenggat berhasil diperpanjang, tapi gagal menulis history.csv",
+                                "Warning",
+                                JOptionPane.WARNING_MESSAGE
+                        );
+                    }
+
                     JOptionPane.showMessageDialog(
                             Dashboard.this,
-                            "Tenggat diperpanjang " + bulan + " bulan.\nTenggat baru: " + r.tenggat,
+                            "Pembayaran sukses!\n" +
+                                    "Durasi: " + bulan + " bulan\n" +
+                                    "Total: " + totalRupiah + "\n" +
+                                    "Tenggat baru: " + tenggatBaru,
                             "Sukses",
                             JOptionPane.INFORMATION_MESSAGE
                     );
+
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(
                             Dashboard.this,
@@ -431,6 +482,7 @@ public class Dashboard extends JFrame {
 
             fireEditingStopped();
         }
+
 
         private JLabel label(String text) {
             JLabel l = new JLabel(text);
