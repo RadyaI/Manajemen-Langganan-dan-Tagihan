@@ -2,6 +2,7 @@ package org.example;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.TableRowSorter;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
@@ -100,7 +101,7 @@ public class Dashboard extends JFrame {
 
         searchField = new Style.RoundedTextField(25);
         searchField.setPreferredSize(new Dimension(420, 45));
-        searchField.setToolTipText("Search...");
+        searchField.setPlaceholder("Search...");
 
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { applyFilter(searchField.getText()); }
@@ -120,15 +121,64 @@ public class Dashboard extends JFrame {
         card.setLayout(new BorderLayout());
         card.setBorder(new EmptyBorder(15, 15, 15, 15));
 
+        // 1. Setup Model Table
+        // Kita override getColumnClass biar kolom "No" dibaca sebagai Angka (Integer), bukan Teks
         tableModel = new DefaultTableModel(
                 new Object[]{"No", "Nama", "Link", "Harga", "Tenggat", "Aksi"}, 0
         ) {
-            @Override public boolean isCellEditable(int row, int col) {
-                return col == 5;
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return col == 5; // Cuma kolom aksi yang bisa diklik
+            }
+
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == 0) return Integer.class; // PENTING: Biar sorting No (1, 2, 10) bener
+                return super.getColumnClass(columnIndex);
             }
         };
 
         table = new JTable(tableModel);
+
+        // --- LOGIC SORTING KHUSUS ---
+        table.setAutoCreateRowSorter(true);
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
+        table.setRowSorter(sorter);
+
+        javax.swing.table.DefaultTableCellRenderer leftRenderer = new javax.swing.table.DefaultTableCellRenderer();
+        leftRenderer.setHorizontalAlignment(JLabel.LEFT);
+
+        table.getColumnModel().getColumn(0).setCellRenderer(leftRenderer);
+
+        // A. Comparator Khusus Harga (String "Rp65.000" -> Angka 65000)
+        java.util.Comparator<String> priceComparator = (s1, s2) -> {
+            try {
+                // Hapus "Rp", hapus titik, hapus spasi
+                String clean1 = s1.replace("Rp", "").replace(".", "").trim();
+                String clean2 = s2.replace("Rp", "").replace(".", "").trim();
+                // Ubah jadi angka long
+                long v1 = Long.parseLong(clean1);
+                long v2 = Long.parseLong(clean2);
+                return Long.compare(v1, v2);
+            } catch (Exception e) {
+                return s1.compareTo(s2); // Fallback kalau format salah
+            }
+        };
+
+        // B. Terapkan Comparator ke Kolom Harga (Index 3)
+        sorter.setComparator(3, priceComparator);
+
+        // C. Atur Kolom Mana Saja yang Boleh Disort
+        // List kolom: 0=No, 1=Nama, 2=Link, 3=Harga, 4=Tenggat, 5=Aksi
+        sorter.setSortable(0, true);  // No (Boleh)
+        sorter.setSortable(1, true);  // Nama (Boleh)
+        sorter.setSortable(2, false); // Link (GAK BOLEH)
+        sorter.setSortable(3, true);  // Harga (Boleh - Pake logic khusus tadi)
+        sorter.setSortable(4, false); // Tenggat (GAK BOLEH)
+        sorter.setSortable(5, false); // Aksi (GAK BOLEH)
+        // -----------------------------
+
+        // Styling Table (Sama kayak sebelumnya)
         table.setRowHeight(48);
         table.setFont(Style.FONT_INPUT);
         table.setForeground(Style.COLOR_TEXT);
@@ -138,16 +188,12 @@ public class Dashboard extends JFrame {
         table.getTableHeader().setFont(Style.FONT_LABEL);
         table.getTableHeader().setForeground(Style.COLOR_TEXT);
         table.getTableHeader().setBackground(Style.COLOR_WHITE);
-
-        // Biar cell aksi gak “ketiban” warna selection terlalu agresif
         table.setSelectionBackground(Style.COLOR_BG);
         table.setSelectionForeground(Style.COLOR_TEXT);
 
-        // Renderer/editor untuk kolom aksi
         table.getColumnModel().getColumn(5).setCellRenderer(new ActionCellRenderer());
         table.getColumnModel().getColumn(5).setCellEditor(new ActionCellEditor());
 
-        // Lebih “modern” spacing
         table.setShowVerticalLines(false);
         table.setShowHorizontalLines(true);
         table.setIntercellSpacing(new Dimension(0, 10));
@@ -227,7 +273,8 @@ public class Dashboard extends JFrame {
 
     private void openCreateData() {
         dispose();
-        new CreateData().setVisible(true);
+        // Kirim username yang sekarang lagi login ke halaman Create
+        new CreateData(this.username).setVisible(true);
     }
 
     private void openHistory() {
