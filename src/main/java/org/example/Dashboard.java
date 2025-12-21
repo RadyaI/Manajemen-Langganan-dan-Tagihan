@@ -2,20 +2,21 @@ package org.example;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.TableRowSorter;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.io.*;
 import java.net.URL;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.time.LocalTime;
-import java.util.*;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class Dashboard extends JFrame {
 
@@ -33,7 +34,7 @@ public class Dashboard extends JFrame {
     private final DateTimeFormatter ID_DATE =
             DateTimeFormatter.ofPattern("dd MMMM yyyy", new Locale("id", "ID"));
 
-    // --- ICON PATHS (resources) ---
+    // Pastikan file icon tersedia di folder resources agar tidak error runtime
     private static final String ICON_PAY = "/icons/pay.png";
     private static final String ICON_EDIT = "/icons/edit.png";
     private static final String ICON_DELETE = "/icons/delete.png";
@@ -42,14 +43,13 @@ public class Dashboard extends JFrame {
         this.username = username;
 
         setTitle("Sistem Manajemen Langganan - Dashboard");
-        setSize(1000, 650);
+        setSize(1100, 700);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
         getContentPane().setBackground(Style.COLOR_BG);
         setLayout(new BorderLayout(20, 20));
 
-        // Validasi icon biar jelas kalau path salah
         validateIconsOrWarn();
 
         add(buildHeader(), BorderLayout.NORTH);
@@ -60,7 +60,7 @@ public class Dashboard extends JFrame {
         applyFilter("");
     }
 
-    // ===================== UI =====================
+    // ===================== UI BUILDER =====================
 
     private JPanel buildHeader() {
         JPanel header = new JPanel(new BorderLayout());
@@ -90,28 +90,24 @@ public class Dashboard extends JFrame {
         JPanel top = new JPanel(new BorderLayout(12, 12));
         top.setOpaque(false);
 
-        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.setOpaque(false);
-
         Style.RoundedButton btnCreate = new Style.RoundedButton("Create Data");
         btnCreate.setPreferredSize(new Dimension(160, 45));
         btnCreate.addActionListener(e -> openCreateData());
         left.add(btnCreate);
 
-        JPanel right = new JPanel(new BorderLayout());
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         right.setOpaque(false);
-
         searchField = new Style.RoundedTextField(25);
         searchField.setPreferredSize(new Dimension(420, 45));
         searchField.setPlaceholder("Search...");
-
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { applyFilter(searchField.getText()); }
             @Override public void removeUpdate(DocumentEvent e) { applyFilter(searchField.getText()); }
             @Override public void changedUpdate(DocumentEvent e) { applyFilter(searchField.getText()); }
         });
-
-        right.add(searchField, BorderLayout.EAST);
+        right.add(searchField);
 
         top.add(left, BorderLayout.WEST);
         top.add(right, BorderLayout.EAST);
@@ -123,82 +119,58 @@ public class Dashboard extends JFrame {
         card.setLayout(new BorderLayout());
         card.setBorder(new EmptyBorder(15, 15, 15, 15));
 
-        // 1. Setup Model Table
-        // Kita override getColumnClass biar kolom "No" dibaca sebagai Angka (Integer), bukan Teks
+        // Penting: Definisi kolom harus lengkap. Jika salah, bisa muncul error "Index 5 >= 0"
         tableModel = new DefaultTableModel(
                 new Object[]{"No", "Nama", "Link", "Harga", "Tenggat", "Aksi"}, 0
         ) {
             @Override
             public boolean isCellEditable(int row, int col) {
-                return col == 5; // Cuma kolom aksi yang bisa diklik
+                return col == 5; // Hanya kolom aksi yang bisa diklik
             }
-
             @Override
             public Class<?> getColumnClass(int columnIndex) {
-                if (columnIndex == 0) return Integer.class; // PENTING: Biar sorting No (1, 2, 10) bener
+                // Return Integer agar sorting nomor urut (1, 2, 10) benar, bukan string (1, 10, 2)
+                if (columnIndex == 0) return Integer.class;
                 return super.getColumnClass(columnIndex);
             }
         };
 
         table = new JTable(tableModel);
 
-        // --- LOGIC SORTING KHUSUS ---
         table.setAutoCreateRowSorter(true);
         TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
         table.setRowSorter(sorter);
 
+        // Custom Comparator: Parsing format "Rp" ke Angka agar sorting harga akurat
+        sorter.setComparator(3, (String s1, String s2) -> {
+            try {
+                long v1 = Long.parseLong(s1.replaceAll("[^0-9]", ""));
+                long v2 = Long.parseLong(s2.replaceAll("[^0-9]", ""));
+                return Long.compare(v1, v2);
+            } catch (Exception e) { return s1.compareTo(s2); }
+        });
+
+        sorter.setSortable(2, false);
+        sorter.setSortable(4, false);
+        sorter.setSortable(5, false);
+
+        table.setRowHeight(50);
+        table.setFont(Style.FONT_INPUT);
+        table.getTableHeader().setFont(Style.FONT_LABEL);
+        table.setSelectionBackground(Style.COLOR_BG);
+        table.setShowVerticalLines(false);
+        table.setIntercellSpacing(new Dimension(0, 10));
+
         javax.swing.table.DefaultTableCellRenderer leftRenderer = new javax.swing.table.DefaultTableCellRenderer();
         leftRenderer.setHorizontalAlignment(JLabel.LEFT);
-
         table.getColumnModel().getColumn(0).setCellRenderer(leftRenderer);
-
-        // A. Comparator Khusus Harga (String "Rp65.000" -> Angka 65000)
-        java.util.Comparator<String> priceComparator = (s1, s2) -> {
-            try {
-                // Hapus "Rp", hapus titik, hapus spasi
-                String clean1 = s1.replace("Rp", "").replace(".", "").trim();
-                String clean2 = s2.replace("Rp", "").replace(".", "").trim();
-                // Ubah jadi angka long
-                long v1 = Long.parseLong(clean1);
-                long v2 = Long.parseLong(clean2);
-                return Long.compare(v1, v2);
-            } catch (Exception e) {
-                return s1.compareTo(s2); // Fallback kalau format salah
-            }
-        };
-
-        // B. Terapkan Comparator ke Kolom Harga (Index 3)
-        sorter.setComparator(3, priceComparator);
-
-        // C. Atur Kolom Mana Saja yang Boleh Disort
-        // List kolom: 0=No, 1=Nama, 2=Link, 3=Harga, 4=Tenggat, 5=Aksi
-        sorter.setSortable(0, true);  // No (Boleh)
-        sorter.setSortable(1, true);  // Nama (Boleh)
-        sorter.setSortable(2, false); // Link (GAK BOLEH)
-        sorter.setSortable(3, true);  // Harga (Boleh - Pake logic khusus tadi)
-        sorter.setSortable(4, false); // Tenggat (GAK BOLEH)
-        sorter.setSortable(5, false); // Aksi (GAK BOLEH)
-        // -----------------------------
-
-        // Styling Table (Sama kayak sebelumnya)
-        table.setRowHeight(48);
-        table.setFont(Style.FONT_INPUT);
-        table.setForeground(Style.COLOR_TEXT);
-        table.setBackground(Style.COLOR_WHITE);
-        table.setGridColor(Style.COLOR_ACCENT);
-
-        table.getTableHeader().setFont(Style.FONT_LABEL);
-        table.getTableHeader().setForeground(Style.COLOR_TEXT);
-        table.getTableHeader().setBackground(Style.COLOR_WHITE);
-        table.setSelectionBackground(Style.COLOR_BG);
-        table.setSelectionForeground(Style.COLOR_TEXT);
 
         table.getColumnModel().getColumn(5).setCellRenderer(new ActionCellRenderer());
         table.getColumnModel().getColumn(5).setCellEditor(new ActionCellEditor());
 
-        table.setShowVerticalLines(false);
-        table.setShowHorizontalLines(true);
-        table.setIntercellSpacing(new Dimension(0, 10));
+        // Wajib set lebar kolom agar 3 tombol muat sejajar dan tidak terpotong
+        table.getColumnModel().getColumn(5).setMinWidth(180);
+        table.getColumnModel().getColumn(5).setMaxWidth(180);
 
         JScrollPane sp = new JScrollPane(table);
         sp.setBorder(BorderFactory.createEmptyBorder());
@@ -217,11 +189,33 @@ public class Dashboard extends JFrame {
         history.setPreferredSize(new Dimension(120, 36));
         history.addActionListener(e -> openHistory());
 
+        Style.RoundedButtonSmall btnLogout = new Style.RoundedButtonSmall("Logout");
+        btnLogout.setPreferredSize(new Dimension(100, 36));
+        btnLogout.setBackground(new Color(255, 82, 82));
+        btnLogout.setForeground(Color.WHITE);
+
+        btnLogout.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(
+                    Dashboard.this,
+                    "Yakin mau keluar?",
+                    "Konfirmasi Logout",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE
+            );
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                dispose();
+                new Main().setVisible(true);
+            }
+        });
+
         footer.add(history, BorderLayout.WEST);
+        footer.add(btnLogout, BorderLayout.EAST);
+
         return footer;
     }
 
-    // ===================== CSV =====================
+    // ===================== LOGIC CSV & FILTER =====================
 
     private void loadFromCsv() {
         allRows.clear();
@@ -231,51 +225,54 @@ public class Dashboard extends JFrame {
         try (BufferedReader br = new BufferedReader(new FileReader(f))) {
             String line;
             while ((line = br.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty()) continue;
-
                 String[] v = line.split(",", -1);
-                if (v.length < 4) continue;
-
-                allRows.add(new SubRow(v[0].trim(), v[1].trim(), v[2].trim(), v[3].trim()));
+                // Filter hanya memuat data milik user yang sedang login
+                if (v.length >= 5 && v[0].trim().equals(username)) {
+                    allRows.add(new SubRow(v[1].trim(), v[2].trim(), v[3].trim(), v[4].trim()));
+                }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        } catch (IOException e) { e.printStackTrace(); }
     }
 
     private void saveToCsv() {
-        try (PrintWriter pw = new PrintWriter(new FileWriter(DATA_CSV))) {
-            for (SubRow r : allRows) {
-                pw.println(r.nama + "," + r.link + "," + r.harga + "," + r.tenggat);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        List<String> otherUsersData = new ArrayList<>();
+        File f = new File(DATA_CSV);
+        if (f.exists()) {
+            try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    String[] v = line.split(",", -1);
+                    // Simpan data user lain agar tidak tertimpa/hilang
+                    if (v.length > 0 && !v[0].equals(username)) {
+                        otherUsersData.add(line);
+                    }
+                }
+            } catch (IOException e) { e.printStackTrace(); }
         }
-    }
 
-    // ===================== FILTER =====================
+        try (PrintWriter pw = new PrintWriter(new FileWriter(DATA_CSV))) {
+            for (String line : otherUsersData) pw.println(line);
+            for (SubRow r : allRows) {
+                pw.println(username + "," + r.nama + "," + r.link + "," + r.harga + "," + r.tenggat);
+            }
+        } catch (IOException e) { e.printStackTrace(); }
+    }
 
     private void applyFilter(String keyword) {
         String key = (keyword == null) ? "" : keyword.trim().toLowerCase();
-
         tableModel.setRowCount(0);
         int no = 1;
-
         for (SubRow r : allRows) {
             if (key.isEmpty() || r.matches(key)) {
-                tableModel.addRow(new Object[]{
-                        no++, r.nama, r.link, r.harga, r.tenggat, ""
-                });
+                tableModel.addRow(new Object[]{no++, r.nama, r.link, r.harga, r.tenggat, ""});
             }
         }
     }
 
-    // ===================== NAV =====================
+    // ===================== NAVIGATION =====================
 
     private void openCreateData() {
         dispose();
-        // Kirim username yang sekarang lagi login ke halaman Create
         new CreateData(this.username).setVisible(true);
     }
 
@@ -284,351 +281,246 @@ public class Dashboard extends JFrame {
         new History(this.username).setVisible(true);
     }
 
-    // ===================== ICON UTILS =====================
+    // ===================== BUTTON RENDERER & EDITOR =====================
 
-    private void validateIconsOrWarn() {
-        List<String> missing = new ArrayList<>();
-        if (getClass().getResource(ICON_PAY) == null) missing.add(ICON_PAY);
-        if (getClass().getResource(ICON_EDIT) == null) missing.add(ICON_EDIT);
-        if (getClass().getResource(ICON_DELETE) == null) missing.add(ICON_DELETE);
-
-        if (!missing.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Icon tidak ditemukan di resources:\n" + String.join("\n", missing) +
-                            "\n\nPastikan ikon ada di:\nsrc/main/resources/icons/",
-                    "Resource Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
-    }
-
-    private ImageIcon loadIcon(String path, int w, int h) {
+    private ImageIcon loadIcon(String path) {
         URL url = getClass().getResource(path);
         if (url == null) return null;
-
         ImageIcon raw = new ImageIcon(url);
-        Image scaled = raw.getImage().getScaledInstance(w, h, Image.SCALE_SMOOTH);
+        Image scaled = raw.getImage().getScaledInstance(20, 20, Image.SCALE_SMOOTH);
         return new ImageIcon(scaled);
     }
 
-    private JButton iconOnlyButton(String iconPath, String tooltip) {
-        JButton b = new JButton();
-        b.setIcon(loadIcon(iconPath, 22, 22));
-        b.setToolTipText(tooltip);
+    private void validateIconsOrWarn() {
+        if (getClass().getResource(ICON_PAY) == null) System.err.println("WARNING: Icon pay.png not found!");
+        if (getClass().getResource(ICON_EDIT) == null) System.err.println("WARNING: Icon edit.png not found!");
+        if (getClass().getResource(ICON_DELETE) == null) System.err.println("WARNING: Icon delete.png not found!");
+    }
 
-        // PENTING: bikin ikon pasti keliatan (tanpa kotak default)
+    private JButton createIconButton(String iconPath, String tooltip) {
+        JButton b = new JButton();
+        ImageIcon icon = loadIcon(iconPath);
+        if (icon != null) b.setIcon(icon);
+        else b.setText(tooltip.substring(0, 1));
+
+        b.setToolTipText(tooltip);
         b.setContentAreaFilled(false);
         b.setBorderPainted(false);
         b.setFocusPainted(false);
-        b.setOpaque(false);
-
         b.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        b.setHorizontalAlignment(SwingConstants.CENTER);
-        b.setVerticalAlignment(SwingConstants.CENTER);
-        b.setBorder(new EmptyBorder(2, 2, 2, 2));
-        b.setPreferredSize(new Dimension(38, 32));
+        b.setPreferredSize(new Dimension(40, 35));
         return b;
     }
 
-    // ===================== TABLE ACTIONS =====================
-
     private class ActionCellRenderer extends JPanel implements TableCellRenderer {
-        private final JButton payBtn = iconOnlyButton(ICON_PAY, "Bayar / Perpanjang");
-        private final JButton editBtn = iconOnlyButton(ICON_EDIT, "Edit");
-        private final JButton delBtn = iconOnlyButton(ICON_DELETE, "Hapus");
+        private final JButton btnPay = createIconButton(ICON_PAY, "Bayar");
+        private final JButton btnEdit = createIconButton(ICON_EDIT, "Edit");
+        private final JButton btnDel = createIconButton(ICON_DELETE, "Hapus");
 
         ActionCellRenderer() {
-            setOpaque(false);
-            setLayout(new FlowLayout(FlowLayout.CENTER, 8, 6));
-            add(payBtn);
-            add(editBtn);
-            add(delBtn);
+            setOpaque(true);
+            setBackground(Style.COLOR_WHITE);
+            setLayout(new FlowLayout(FlowLayout.CENTER, 5, 5));
+            add(btnPay); add(btnEdit); add(btnDel);
         }
 
         @Override
-        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
-                                                       boolean hasFocus, int row, int column) {
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            setBackground(isSelected ? table.getSelectionBackground() : Style.COLOR_WHITE);
             return this;
         }
     }
 
     private class ActionCellEditor extends AbstractCellEditor implements TableCellEditor {
-        private final JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 6));
-        private final JButton payBtn = iconOnlyButton(ICON_PAY, "Bayar / Perpanjang");
-        private final JButton editBtn = iconOnlyButton(ICON_EDIT, "Edit");
-        private final JButton delBtn = iconOnlyButton(ICON_DELETE, "Hapus");
-
+        private final JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 5));
+        private final JButton btnPay = createIconButton(ICON_PAY, "Bayar");
+        private final JButton btnEdit = createIconButton(ICON_EDIT, "Edit");
+        private final JButton btnDel = createIconButton(ICON_DELETE, "Hapus");
         private int editingRow = -1;
 
         ActionCellEditor() {
-            panel.setOpaque(false);
+            panel.setOpaque(true);
+            panel.setBackground(Style.COLOR_WHITE);
 
-            payBtn.addActionListener(e -> onPay());
-            editBtn.addActionListener(e -> onEdit());
-            delBtn.addActionListener(e -> onDelete());
+            btnPay.addActionListener(e -> onPay());
+            btnEdit.addActionListener(e -> onEdit());
+            btnDel.addActionListener(e -> onDelete());
 
-            panel.add(payBtn);
-            panel.add(editBtn);
-            panel.add(delBtn);
-        }
-
-        private SubRow getRowFromVisibleIndex(int visibleRowIndex) {
-            if (visibleRowIndex < 0) return null;
-
-            String nama = String.valueOf(table.getValueAt(visibleRowIndex, 1));
-            String link = String.valueOf(table.getValueAt(visibleRowIndex, 2));
-            String harga = String.valueOf(table.getValueAt(visibleRowIndex, 3));
-            String tenggat = String.valueOf(table.getValueAt(visibleRowIndex, 4));
-
-            for (SubRow r : allRows) {
-                if (r.nama.equals(nama) && r.link.equals(link) && r.harga.equals(harga) && r.tenggat.equals(tenggat)) {
-                    return r;
-                }
-            }
-            return null;
-        }
-
-        private void onPay() {
-            SubRow r = getRowFromVisibleIndex(editingRow);
-            if (r == null) { fireEditingStopped(); return; }
-
-            Integer[] pilihan = new Integer[12];
-            for (int i = 0; i < 12; i++) pilihan[i] = i + 1;
-
-            JComboBox<Integer> combo = new JComboBox<>(pilihan);
-
-            int res = JOptionPane.showConfirmDialog(
-                    Dashboard.this,
-                    combo,
-                    "Perpanjang berapa bulan?",
-                    JOptionPane.OK_CANCEL_OPTION,
-                    JOptionPane.PLAIN_MESSAGE
-            );
-
-            if (res == JOptionPane.OK_OPTION) {
-                try {
-                    // 1) Update tenggat
-                    LocalDate d = LocalDate.parse(r.tenggat, ID_DATE);
-                    int bulan = (Integer) combo.getSelectedItem();
-                    String tenggatBaru = d.plusMonths(bulan).format(ID_DATE);
-                    r.tenggat = tenggatBaru;
-
-                    // 2) Hitung total bayar (harga * bulan)
-                    // Bersihin "Rp" dan titik, ambil digit saja
-                    String hargaRaw = (r.harga == null) ? "" : r.harga.trim();
-                    String angkaOnly = hargaRaw
-                            .replace("Rp", "")
-                            .replace("rp", "")
-                            .replace(".", "")
-                            .replace(" ", "")
-                            .replaceAll("[^0-9]", "");
-
-                    long hargaPerBulan = angkaOnly.isEmpty() ? 0L : Long.parseLong(angkaOnly);
-                    long total = hargaPerBulan * bulan;
-
-                    // Format balik Rupiah: Rp50.000
-                    java.text.NumberFormat nf = java.text.NumberFormat.getInstance(new Locale("id", "ID"));
-                    String totalRupiah = "Rp" + nf.format(total);
-
-                    // 3) Tanggal & waktu bayar sekarang
-                    String tanggalBayar = LocalDate.now().format(ID_DATE);
-                    String waktuBayar = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
-
-                    // 4) Save subscriptions.csv
-                    saveToCsv();
-                    applyFilter(searchField.getText());
-
-                    // 5) Append ke history.csv
-                    // Format: Nama Layanan, Tenggat Baru, Durasi (Bulan), Total Bayar, Tanggal Bayar, Waktu Bayar
-                    try (PrintWriter pw = new PrintWriter(new FileWriter("history.csv", true))) {
-                        pw.println(
-                                r.nama + "," +
-                                        tenggatBaru + "," +
-                                        bulan + "," +
-                                        totalRupiah + "," +
-                                        tanggalBayar + "," +
-                                        waktuBayar
-                        );
-                    } catch (IOException io) {
-                        io.printStackTrace();
-                        JOptionPane.showMessageDialog(
-                                Dashboard.this,
-                                "Tenggat berhasil diperpanjang, tapi gagal menulis history.csv",
-                                "Warning",
-                                JOptionPane.WARNING_MESSAGE
-                        );
-                    }
-
-                    JOptionPane.showMessageDialog(
-                            Dashboard.this,
-                            "Pembayaran sukses!\n" +
-                                    "Durasi: " + bulan + " bulan\n" +
-                                    "Total: " + totalRupiah + "\n" +
-                                    "Tenggat baru: " + tenggatBaru,
-                            "Sukses",
-                            JOptionPane.INFORMATION_MESSAGE
-                    );
-
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(
-                            Dashboard.this,
-                            "Format tenggat harus: 08 Januari 2026",
-                            "Error",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                }
-            }
-
-            fireEditingStopped();
-        }
-
-
-        private JLabel label(String text) {
-            JLabel l = new JLabel(text);
-            l.setFont(Style.FONT_LABEL);
-            l.setForeground(Style.COLOR_TEXT);
-            l.setAlignmentX(Component.LEFT_ALIGNMENT);
-            return l;
+            panel.add(btnPay); panel.add(btnEdit); panel.add(btnDel);
         }
 
         private void onEdit() {
             SubRow r = getRowFromVisibleIndex(editingRow);
             if (r == null) { fireEditingStopped(); return; }
 
-            Style.RoundedTextField namaF = new Style.RoundedTextField(20);
-            Style.RoundedTextField linkF = new Style.RoundedTextField(20);
-            Style.RoundedTextField hargaF = new Style.RoundedTextField(20);
-            Style.RoundedTextField tenggatF = new Style.RoundedTextField(20);
+            Style.RoundedTextField fNama = new Style.RoundedTextField(20);
+            fNama.setText(r.nama);
+            fNama.setPlaceholder("Nama Layanan");
 
-            namaF.setText(r.nama);
-            linkF.setText(r.link);
-            hargaF.setText(r.harga);
-            tenggatF.setText(r.tenggat);
+            Style.RoundedTextField fLink = new Style.RoundedTextField(20);
+            fLink.setText(r.link);
+            fLink.setPlaceholder("Link / URL");
 
-            namaF.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-            linkF.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-            hargaF.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-            tenggatF.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+            String cleanHarga = r.harga.replaceAll("[^0-9]", "");
+            Style.RoundedTextField fHarga = new Style.RoundedTextField(20);
+            fHarga.setText(cleanHarga);
+            fHarga.setPlaceholder("Harga (Angka)");
 
-            JPanel form = new JPanel();
-            form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
-            form.setBackground(Style.COLOR_WHITE);
-            form.setBorder(new EmptyBorder(15, 15, 15, 15));
+            Style.RoundedTextField fTenggat = new Style.RoundedTextField(20);
+            fTenggat.setText(r.tenggat);
+            fTenggat.setPlaceholder("Contoh: 25 Januari 2026");
 
-            form.add(label("Nama"));
-            form.add(namaF);
-            form.add(Box.createRigidArea(new Dimension(0, 10)));
+            // GridLayout(0, 1) memaksa layout vertikal (tumpuk ke bawah)
+            JPanel p = new JPanel(new GridLayout(0, 1, 0, 2));
+            p.setOpaque(false);
 
-            form.add(label("Link"));
-            form.add(linkF);
-            form.add(Box.createRigidArea(new Dimension(0, 10)));
+            p.add(createLabel("Nama Layanan:"));
+            p.add(fNama);
+            p.add(createLabel("Link:"));
+            p.add(fLink);
+            p.add(createLabel("Harga (Angka Saja):"));
+            p.add(fHarga);
+            p.add(createLabel("Tenggat (dd MMMM yyyy):"));
+            p.add(fTenggat);
 
-            form.add(label("Harga"));
-            form.add(hargaF);
-            form.add(Box.createRigidArea(new Dimension(0, 10)));
+            // Loop validation: dialog tidak menutup jika input invalid (UX improvement)
+            while (true) {
+                int result = JOptionPane.showConfirmDialog(
+                        Dashboard.this, p, "Edit Data Langganan",
+                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE
+                );
 
-            form.add(label("Tenggat (dd MMMM yyyy)"));
-            form.add(tenggatF);
+                if (result != JOptionPane.OK_OPTION) break;
 
-            int res = JOptionPane.showConfirmDialog(
-                    Dashboard.this,
-                    form,
-                    "Edit Data Langganan",
-                    JOptionPane.OK_CANCEL_OPTION,
-                    JOptionPane.PLAIN_MESSAGE
-            );
+                String valNama = fNama.getText().trim();
+                String valLink = fLink.getText().trim();
+                String valHarga = fHarga.getText().trim();
+                String valTenggat = fTenggat.getText().trim();
 
-            if (res == JOptionPane.OK_OPTION) {
-                String nama = namaF.getText().trim();
-                String link = linkF.getText().trim();
-                String harga = hargaF.getText().trim();
-                String tenggat = tenggatF.getText().trim();
-
-                if (nama.isEmpty() || link.isEmpty() || harga.isEmpty() || tenggat.isEmpty()) {
-                    JOptionPane.showMessageDialog(
-                            Dashboard.this,
-                            "Semua field wajib diisi.",
-                            "Error",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    fireEditingStopped();
-                    return;
+                if (valNama.isEmpty() || valHarga.isEmpty() || valTenggat.isEmpty()) {
+                    JOptionPane.showMessageDialog(Dashboard.this, "Nama, Harga, dan Tenggat wajib diisi!", "Error", JOptionPane.ERROR_MESSAGE);
+                    continue;
                 }
 
-                try { LocalDate.parse(tenggat, ID_DATE); }
-                catch (Exception ex) {
-                    JOptionPane.showMessageDialog(
-                            Dashboard.this,
-                            "Format tenggat harus: 08 Januari 2026",
-                            "Error",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    fireEditingStopped();
-                    return;
+                try {
+                    LocalDate d = LocalDate.parse(valTenggat, ID_DATE);
+                    if (d.isBefore(LocalDate.now())) {
+                        JOptionPane.showMessageDialog(Dashboard.this,
+                                "Tanggal tenggat tidak boleh kurang dari hari ini!",
+                                "Validasi Tanggal", JOptionPane.WARNING_MESSAGE);
+                        continue;
+                    }
+                    r.tenggat = valTenggat;
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(Dashboard.this,
+                            "Format tanggal salah!\nGunakan format: 25 Januari 2026\n(Bulan Bahasa Indonesia)",
+                            "Error Format", JOptionPane.ERROR_MESSAGE);
+                    continue;
                 }
 
-                r.nama = nama;
-                r.link = link;
-                r.harga = harga;
-                r.tenggat = tenggat;
+                try {
+                    long h = Long.parseLong(valHarga);
+                    r.harga = "Rp" + java.text.NumberFormat.getInstance(new Locale("id")).format(h);
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(Dashboard.this, "Harga harus berupa angka valid!", "Error", JOptionPane.ERROR_MESSAGE);
+                    continue;
+                }
+
+                r.nama = valNama;
+                r.link = valLink.isEmpty() ? "-" : valLink;
 
                 saveToCsv();
                 applyFilter(searchField.getText());
+                JOptionPane.showMessageDialog(Dashboard.this, "Data berhasil diperbarui!");
+                break;
             }
 
+            fireEditingStopped();
+        }
+
+        private JLabel createLabel(String text) {
+            JLabel l = new JLabel(text);
+            l.setFont(new Font("SansSerif", Font.BOLD, 12));
+            l.setAlignmentX(Component.LEFT_ALIGNMENT);
+            return l;
+        }
+
+        private void onPay() {
+            SubRow r = getRowFromVisibleIndex(editingRow);
+            if (r == null) { fireEditingStopped(); return; }
+
+            Integer[] opts = {1, 2, 3, 6, 7, 8, 9, 10, 11, 12};
+            JComboBox<Integer> cb = new JComboBox<>(opts);
+
+            JPanel p = new JPanel(new GridLayout(0, 1, 0, 10));
+            p.setOpaque(false);
+            JLabel lbl = new JLabel("Perpanjang berapa bulan?");
+            lbl.setFont(new Font("SansSerif", Font.BOLD, 12));
+            p.add(lbl);
+            p.add(cb);
+
+            if (JOptionPane.showConfirmDialog(Dashboard.this, p, "Pembayaran", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
+                try {
+                    int bulan = (Integer) cb.getSelectedItem();
+                    LocalDate d = LocalDate.parse(r.tenggat, ID_DATE).plusMonths(bulan);
+                    String tenggatBaru = d.format(ID_DATE);
+
+                    long harga = Long.parseLong(r.harga.replaceAll("[^0-9]", ""));
+                    String total = "Rp" + java.text.NumberFormat.getInstance(new Locale("id")).format(harga * bulan);
+
+                    r.tenggat = tenggatBaru;
+                    saveToCsv();
+
+                    try (PrintWriter pw = new PrintWriter(new FileWriter(HISTORY_CSV, true))) {
+                        pw.println(username + "," + r.nama + "," + r.tenggat + "," + bulan + "," + total + "," +
+                                LocalDate.now().format(ID_DATE) + "," + LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")));
+                    }
+
+                    applyFilter(searchField.getText());
+
+                    String msg = "Pembayaran Berhasil! ✅\n\n" +
+                            "Layanan      : " + r.nama + "\n" +
+                            "Durasi       : " + bulan + " Bulan\n" +
+                            "Total Bayar  : " + total + "\n" +
+                            "Tenggat Baru : " + tenggatBaru;
+
+                    JOptionPane.showMessageDialog(Dashboard.this, msg, "Sukses", JOptionPane.INFORMATION_MESSAGE);
+
+                } catch (Exception ex) { ex.printStackTrace(); }
+            }
             fireEditingStopped();
         }
 
         private void onDelete() {
             SubRow r = getRowFromVisibleIndex(editingRow);
-            if (r == null) { fireEditingStopped(); return; }
-
-            int confirm = JOptionPane.showConfirmDialog(
-                    Dashboard.this,
-                    "Hapus data \"" + r.nama + "\" ?",
-                    "Konfirmasi",
-                    JOptionPane.YES_NO_OPTION
-            );
-
-            if (confirm == JOptionPane.YES_OPTION) {
+            if (r != null && JOptionPane.showConfirmDialog(Dashboard.this, "Hapus " + r.nama + "?", "Konfirmasi", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
                 allRows.remove(r);
                 saveToCsv();
                 applyFilter(searchField.getText());
             }
-
             fireEditingStopped();
+        }
+
+        private SubRow getRowFromVisibleIndex(int row) {
+            if (row < 0 || row >= table.getRowCount()) return null;
+            String nama = (String) table.getValueAt(row, 1);
+            return allRows.stream().filter(r -> r.nama.equals(nama)).findFirst().orElse(null);
         }
 
         @Override
         public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
             this.editingRow = row;
+            panel.setBackground(table.getSelectionBackground());
             return panel;
         }
 
         @Override
-        public Object getCellEditorValue() {
-            return "";
-        }
+        public Object getCellEditorValue() { return ""; }
     }
-
-    // ===================== MODEL =====================
 
     private static class SubRow {
         String nama, link, harga, tenggat;
-
-        SubRow(String nama, String link, String harga, String tenggat) {
-            this.nama = nama;
-            this.link = link;
-            this.harga = harga;
-            this.tenggat = tenggat;
-        }
-
-        boolean matches(String key) {
-            return nama.toLowerCase().contains(key)
-                    || link.toLowerCase().contains(key)
-                    || harga.toLowerCase().contains(key)
-                    || tenggat.toLowerCase().contains(key);
-        }
+        SubRow(String n, String l, String h, String t) { nama = n; link = l; harga = h; tenggat = t; }
+        boolean matches(String k) { return nama.toLowerCase().contains(k) || link.toLowerCase().contains(k); }
     }
 }
