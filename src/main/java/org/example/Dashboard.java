@@ -29,7 +29,7 @@ public class Dashboard extends JFrame {
     private JTable table;
     private DefaultTableModel tableModel;
 
-    private final List<SubRow> allRows = new ArrayList<>();
+    public final List<SubRow> allRows = new ArrayList<>();
 
     private final DateTimeFormatter ID_DATE =
             DateTimeFormatter.ofPattern("dd MMMM yyyy", new Locale("id", "ID"));
@@ -518,9 +518,12 @@ public class Dashboard extends JFrame {
         public Object getCellEditorValue() { return ""; }
     }
 
-    private static class SubRow {
-        String nama, link, harga, tenggat;
-        SubRow(String n, String l, String h, String t) { nama = n; link = l; harga = h; tenggat = t; }
-        boolean matches(String k) { return nama.toLowerCase().contains(k) || link.toLowerCase().contains(k); }
+    public static class SubRow {
+        public String nama;
+        String link;
+        public String harga;
+        String tenggat;
+        public SubRow(String n, String l, String h, String t) { nama = n; link = l; harga = h; tenggat = t; }
+        public boolean matches(String k) { return nama.toLowerCase().contains(k) || link.toLowerCase().contains(k); }
     }
 }
